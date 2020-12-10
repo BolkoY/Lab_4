@@ -1,8 +1,21 @@
 package lab_4;
 
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Stroke;
+import java.awt.font.FontRenderContext;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.GeneralPath;
+import java.awt.geom.Line2D;
+import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
+import javax.swing.JPanel;
 
 public class GraphicsDisplay extends JPanel {
-
 
     // Список координат точек для построения графика
     private Double[][] graphicsData;
@@ -48,6 +61,63 @@ public class GraphicsDisplay extends JPanel {
         this.graphicsData = graphicsData;
         // Запросить перерисовку компонента (неявно вызвать paintComponent())
         repaint();
+    }
+
+    // Методы-модификаторы для изменения параметров отображения графика
+    // Изменение любого параметра приводит к перерисовке области
+    public void setShowAxis(boolean showAxis) {
+        this.showAxis = showAxis;
+        repaint();
+    }
+    public void setShowMarkers(boolean showMarkers) {
+        this.showMarkers = showMarkers;
+        repaint();
+    }
+
+    //алгоритм пересчѐта координат из Декартовой системы в систему холста отображения
+    protected Point2D.Double xyToPoint(double x, double y) {
+        // Вычисляем смещение X от самой левой точки (minX)
+        double deltaX = x - minX;
+        // Вычисляем смещение Y от точки верхней точки (maxY)
+        double deltaY = maxY - y;
+        return new Point2D.Double(deltaX*scale, deltaY*scale);
+    }
+
+    protected Point2D.Double shiftPoint(Point2D.Double src,
+        double deltaX, double deltaY) {
+
+        // Инициализировать новый экземпляр точки
+        Point2D.Double dest = new Point2D.Double();
+        // Задать еѐ координаты как координаты существующей точки +
+        // заданные смещения
+        dest.setLocation(src.getX() + deltaX, src.getY() + deltaY);
+        return dest;
+    }
+
+    //Для отображения линии графика
+    protected void paintGraphics(Graphics2D canvas) {
+        // Выбрать линию для рисования графика
+        canvas.setStroke(graphicsStroke);
+        // Выбрать цвет линии
+        canvas.setColor(Color.RED);
+        /* Будем рисовать линию графика как путь, состоящий из множества
+        сегментов (GeneralPath). Начало пути устанавливается в первую точку
+        графика, после чего прямой соединяется со следующими точками */
+        GeneralPath graphics = new GeneralPath();
+        for (int i=0; i<graphicsData.length; i++) {
+            // Преобразовать значения (x,y) в точку на экране point
+            Point2D.Double point = xyToPoint(graphicsData[i][0], graphicsData[i][1]);
+
+            if (i>0) {
+                // Не первая итерация – вести линию в точку point
+                graphics.lineTo(point.getX(), point.getY());
+            } else {
+                // Первая итерация - установить начало пути в точку point
+                graphics.moveTo(point.getX(), point.getY());
+            }
+        }
+        // Отобразить график
+        canvas.draw(graphics);
     }
 
         //Метод отображения осей координат
@@ -130,4 +200,117 @@ public class GraphicsDisplay extends JPanel {
                 (float)(labelPos.getY() + bounds.getY()-200));
         }
     }
+
+    //Метод отображения маркеров точек
+    protected void paintMarkers(Graphics2D canvas) {
+        // Шаг 1 - Установить специальное перо для черчения контуров маркеров
+        canvas.setStroke(markerStroke);
+        // Выбрать красный цвета для контуров маркеров
+        canvas.setColor(Color.RED);
+        // Выбрать красный цвет для закрашивания маркеров внутри
+        canvas.setPaint(Color.RED);
+        // Шаг 2 - Организовать цикл по всем точкам графика
+
+        for (int i = 0; i < graphicsData.length; i++){
+            // Выбрать зеленый цвет для закрашивания маркеров внутри
+            canvas.setPaint(Color.GREEN);
+            double x1 = graphicsData[i][1];
+            //x1 = Math.sqrt(x1);
+            int whole = (int)x1;
+            if ( whole%2 == 0){
+                canvas.setPaint(Color.RED);
+                Ellipse2D.Double marker = new Ellipse2D.Double();
+                Point2D.Double center = xyToPoint(graphicsData[i][0], graphicsData[i][1]);
+                Point2D.Double corner = shiftPoint(center, 3, 3);
+                marker.setFrameFromCenter(center, corner);
+                canvas.draw(marker); // Начертить контур маркера
+                canvas.fill(marker);
+            } else {GeneralPath path = new GeneralPath();
+                Point2D.Double center = xyToPoint(graphicsData[i][0], graphicsData[i][1]);
+                path.moveTo(center.x , center.y +5);
+                path.lineTo(center.x + 4, center.y -2.5);
+                path.lineTo(center.x -4, center.y-2.5);
+                
+                path.closePath();
+                canvas.draw(path);
+                canvas.fill(path);
+            }
+        }
+    }
+
+    //Реализация метода перерисовки компонента paintComponent()
+    public void paintComponent(Graphics g) {
+        /* Шаг 1 - Вызвать метод предка для заливки области цветом заднего фона
+        * Эта функциональность - единственное, что осталось в наследство от
+        * paintComponent класса JPanel
+        */
+        super.paintComponent(g);
+        // Шаг 2 - Если данные графика не загружены (при показе компонента при
+        // запуске программы) - ничего не делать
+        if (graphicsData==null || graphicsData.length==0) return;
+        // Шаг 3 - Определить начальные границы области отображения
+        // Еѐ верхний левый угол - (minX, maxY), правый нижний - (maxX, minY)
+        minX = graphicsData[0][0];
+        maxX = graphicsData[graphicsData.length-1][0];
+        minY = graphicsData[0][1];
+        maxY = minY;
+        // Найти минимальное и максимальное значение функции
+        for (int i = 1; i<graphicsData.length; i++) {
+            if (graphicsData[i][1]<minY) {
+                minY = graphicsData[i][1];
+            }
+            if (graphicsData[i][1]>maxY) {
+                maxY = graphicsData[i][1];
+            }
+        }
+        /* Шаг 4 - Определить (исходя из размеров окна) масштабы по осям X и Y –
+        сколько пикселов приходится на единицу длины по X и по Y */
+        double scaleX = getSize().getWidth() / (maxX - minX);
+        double scaleY = getSize().getHeight() / (maxY - minY);
+        // Выбрать единый масштаб как минимальный из двух
+        scale = Math.min(scaleX, scaleY);
+        // Шаг 5 - корректировка границ области согласно выбранному масштабу
+        if (scale==scaleX) {
+            /* Если за основу был взят масштаб по оси X, значит по оси Y
+            делений меньше, т.е. подлежащий отображению диапазон по Y будет меньше
+            высоты окна. Значит необходимо добавить делений, сделаем это так:
+            1) Вычислим, сколько делений влезет по Y при выбранном масштабе -
+            getSize().getHeight()/scale;
+            2) Вычтем из этого значения сколько делений требовалось изначально;
+            3) Набросим по половине недостающего расстояния на maxY и minY */
+            double yIncrement = (getSize().getHeight()/scale-(maxY-minY))/2;
+            maxY += yIncrement;
+            minY -= yIncrement;
+        }
+        if (scale==scaleY) {
+            // Если за основу был взят масштаб по оси Y, действовать по аналогии
+            double xIncrement = (getSize().getWidth()/scale-(maxX-minX))/2;
+            maxX += xIncrement;
+            minX -= xIncrement;
+        }
+        // Шаг 5 – Преобразовать экземпляр Graphics к Graphics2D
+        Graphics2D canvas = (Graphics2D) g;
+        // Шаг 6 - Сохранить текущие настройки холста
+        Stroke oldStroke = canvas.getStroke();
+        Color oldColor = canvas.getColor();
+        Paint oldPaint = canvas.getPaint();
+        Font oldFont = canvas.getFont();
+        // Шаг 8 - В нужном порядке вызвать методы отображения элементов графика
+        // Порядок вызова методов имеет значение, т.к. предыдущий рисунок будет
+        // затираться последующим
+        // Первым (если нужно) отрисовываются оси координат.
+        if (showAxis) paintAxis(canvas);
+        // Затем отображается сам график
+        paintGraphics(canvas);
+        // Затем (если нужно) отображаются маркеры точек графика.
+        if (showMarkers) paintMarkers(canvas);
+        // Шаг 9 - Восстановить старые настройки холста
+        canvas.setFont(oldFont);
+        canvas.setPaint(oldPaint);
+        canvas.setColor(oldColor);
+        canvas.setStroke(oldStroke);
+    }
+
+
 }
+
